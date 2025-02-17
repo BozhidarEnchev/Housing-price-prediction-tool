@@ -3,6 +3,7 @@ from sklearn.preprocessing import OneHotEncoder
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
+import pickle
 
 onehot_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
 onehot_columns = ['City', 'Neighborhood', 'Material']
@@ -19,12 +20,19 @@ model = XGBRegressor(
     random_state=42
 )
 
+if not TRAIN_MODEL:
+    with open('onehot_encoder.pkl', 'rb') as file:
+        onehot_encoder = pickle.load(file)
 
 def prepare_data():
     data = pd.read_csv('data/all_data.csv')
     data = data.drop(columns=['Heating',])
 
     onehot_encoded = onehot_encoder.fit_transform(data[onehot_columns])
+
+    with open('onehot_encoder.pkl', 'wb') as file:
+        pickle.dump(onehot_encoder, file)
+
     onehot_df = pd.DataFrame(onehot_encoded, columns=onehot_encoder.get_feature_names_out(onehot_columns))
 
     data = data.drop(columns=onehot_columns)
@@ -49,7 +57,7 @@ def test_model(X_test, y_test):
     print(mae)
 
 
-def preprocess_input(input_data, X_train):
+def preprocess_input(input_data):
     onehot_columns = ['City', 'Neighborhood', 'Material']
     numerical_columns = ['Rooms', 'Size', 'Year', 'Total Floors', 'Floor']
 
@@ -66,15 +74,10 @@ def preprocess_input(input_data, X_train):
     input_data = input_data.drop(columns=onehot_columns)
     input_data = pd.concat([input_data, onehot_df], axis=1)
 
-    train_columns = X_train.columns.tolist()
-
-    # Align the input data columns with the training data columns
-    input_data = input_data[train_columns]
-
     return input_data
 
 
-def predict(X_train):
+def predict():
     print('Valid cities ', VALID_CITIES)
     city = input('Enter City: ')
     while city not in VALID_CITIES:
@@ -88,22 +91,22 @@ def predict(X_train):
     floor = int(input('Enter floor: '))
 
     predict_data = pd.DataFrame([{
-        'City': city,
-        'Neighborhood': neighbourhood,
         'Rooms': rooms,
         'Size': size,
-        'Total Floors': total_floors,
         'Floor': floor,
+        'Total Floors': total_floors,
     }])
     year = input('Enter building year (if known): ')
     if year:
         predict_data['Year'] = int(year)
+    predict_data['City'] = city
+    predict_data['Neighborhood'] = neighbourhood
 
     building_material = input('Building material (if known): ')
     if building_material:
         predict_data['Material'] = building_material
 
-    processed_input = preprocess_input(predict_data, X_train)
+    processed_input = preprocess_input(predict_data)
 
     prediction = model.predict(processed_input)
 
@@ -111,13 +114,13 @@ def predict(X_train):
 
 
 def main():
-    X_train, X_test, y_train, y_test = prepare_data()
     if TRAIN_MODEL:
+        X_train, X_test, y_train, y_test = prepare_data()
         train_xgb_regressor(X_train, X_test, y_train, y_test)
     else:
         model.load_model('housing_price_model.json')
     while True:
-        predicted_price = predict(X_train)
+        predicted_price = predict()
         print(f'Predicted Price: {predicted_price[0]:,.2f}')
 
 
